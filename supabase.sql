@@ -9,8 +9,13 @@ create table if not exists public.solicitacoes (
   status text not null default 'Aberta',
   prioridade text not null default 'Normal',
   responsavel text,
+  resposta text,
+  respondido_em timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.solicitacoes add column if not exists resposta text;
+alter table public.solicitacoes add column if not exists respondido_em timestamptz;
 
 alter table public.solicitacoes enable row level security;
 
