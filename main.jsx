@@ -13,8 +13,211 @@ function Home(){const nav=useNavigate();return <main className="app center"><div
 
 function Solicitacao(){const [sent,setSent]=useState(false),[protocol,setProtocol]=useState(""),[saving,setSaving]=useState(false),[error,setError]=useState("");const [f,setF]=useState({nome:"",canal:"Site",assunto:"",mensagem:"",categoria:""});const nav=useNavigate(),set=(k,v)=>setF(x=>({...x,[k]:v}));if(sent)return <main className="app center"><div className="container" style={{maxWidth:650,textAlign:"center"}}><div className="card" style={{padding:35}}><div style={{fontSize:48}}>✓</div><h1>Solicitação registrada</h1><p className="muted">Seu protocolo:</p><div style={{fontSize:36,fontWeight:900,color:"#22d3ee"}}>{protocol}</div><button className="btn primary" style={{marginTop:24}} onClick={()=>nav("/protocolo/"+protocol)}>Acompanhar solicitação</button></div></div></main>;return <main className="app" style={{padding:"45px 0"}}><div className="container" style={{maxWidth:760}}><button className="btn ghost" onClick={()=>nav("/")}>← Voltar</button><div className="card" style={{padding:30,marginTop:18}}><h1>Nova solicitação</h1><p className="muted">Preencha os dados. O Conecta Mais registra a solicitação diretamente no banco.</p><form className="grid" style={{marginTop:25}} onSubmit={async e=>{e.preventDefault();setError("");if(!supabase){setError("Supabase não configurado.");return}setSaving(true);const protocolo="CT-"+String(Date.now()).slice(-6);const {error:dbError}=await supabase.from("solicitacoes").insert([{protocolo,nome_cliente:f.nome,canal:f.canal,assunto:f.assunto,mensagem:f.mensagem,categoria:f.categoria||null,status:"Aberta",prioridade:"Normal"}]);setSaving(false);if(dbError){setError(dbError.message);return}setProtocol(protocolo);setSent(true)}}><div><label className="label">Nome do cliente</label><input className="input" required value={f.nome} onChange={e=>set("nome",e.target.value)}/></div><div className="grid grid2"><div><label className="label">Canal de entrada</label><select className="input" value={f.canal} onChange={e=>set("canal",e.target.value)}><option>Site</option><option>WhatsApp</option><option>E-mail</option><option>Telefone</option></select></div><div><label className="label">Categoria</label><input className="input" placeholder="Ex.: Financeiro" value={f.categoria} onChange={e=>set("categoria",e.target.value)}/></div></div><div><label className="label">Assunto</label><input className="input" required value={f.assunto} onChange={e=>set("assunto",e.target.value)}/></div><div><label className="label">Mensagem / descrição</label><textarea className="input" rows="7" required value={f.mensagem} onChange={e=>set("mensagem",e.target.value)}/></div>{error&&<div style={{color:"#fca5a5"}}>{error}</div>}<button className="btn primary" disabled={saving}>{saving?"Registrando...":"Enviar solicitação"}</button></form></div></div></main>}
 
-function Protocolo(){const {id}=useParams();return <main className="app center"><div className="container" style={{maxWidth:650,textAlign:"center"}}><div className="card" style={{padding:35}}><p className="muted">Protocolo</p><h1 style={{color:"#22d3ee"}}>{id}</h1><p className="muted">Use este protocolo para acompanhar sua solicitação.</p><Link className="btn primary" to="/">Voltar ao início</Link></div></div></main>}
+function Protocolo(){
+  const {id}=useParams();
+  const [dados,setDados]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
 
+  useEffect(()=>{
+    async function buscar(){
+      if(!supabase){
+        setError("Sistema indisponível no momento.");
+        setLoading(false);
+        return;
+      }
+
+      const protocolo=id?.trim();
+
+      if(!protocolo){
+        setError("Protocolo inválido.");
+        setLoading(false);
+        return;
+      }
+
+      const {data,error}=await supabase.rpc(
+        "buscar_solicitacao",
+        {p_protocolo:protocolo}
+      );
+
+      if(error){
+        setError(error.message);
+      }else if(!data || data.length===0){
+        setError("Não encontramos uma solicitação com este protocolo.");
+      }else{
+        setDados(data[0]);
+      }
+
+      setLoading(false);
+    }
+
+    buscar();
+  },[id]);
+
+  return (
+    <main className="app center">
+      <div className="container" style={{maxWidth:700}}>
+        <div className="card" style={{padding:35}}>
+
+          <p className="muted">Acompanhamento da solicitação</p>
+
+          <h1 style={{color:"#22d3ee",marginBottom:25}}>
+            {id}
+          </h1>
+
+          {loading && (
+            <p className="muted">
+              Consultando solicitação...
+            </p>
+          )}
+
+          {error && (
+            <div>
+              <div
+                className="card"
+                style={{
+                  padding:18,
+                  borderColor:"#7f1d1d",
+                  marginBottom:20
+                }}
+              >
+                <p style={{color:"#fca5a5",margin:0}}>
+                  {error}
+                </p>
+              </div>
+
+              <Link className="btn ghost" to="/">
+                ← Voltar ao início
+              </Link>
+            </div>
+          )}
+
+          {dados && (
+            <div style={{textAlign:"left"}}>
+
+              <div
+                className="card"
+                style={{
+                  padding:20,
+                  marginBottom:15,
+                  background:"#0b1e2d"
+                }}
+              >
+                <p className="muted">Cliente</p>
+                <strong>{dados.nome_cliente}</strong>
+
+                <p className="muted" style={{marginTop:15}}>
+                  Assunto
+                </p>
+                <strong>{dados.assunto}</strong>
+
+                <p className="muted" style={{marginTop:15}}>
+                  Categoria
+                </p>
+                <strong>{dados.categoria || "Não informada"}</strong>
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding:20,
+                  marginBottom:15
+                }}
+              >
+                <p className="muted">Status</p>
+
+                <strong style={{fontSize:20}}>
+                  {dados.status}
+                </strong>
+
+                <p className="muted" style={{marginTop:15}}>
+                  Prioridade
+                </p>
+
+                <strong>
+                  {dados.prioridade}
+                </strong>
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding:20,
+                  marginBottom:15
+                }}
+              >
+                <p className="muted">Sua solicitação</p>
+
+                <p
+                  style={{
+                    whiteSpace:"pre-wrap",
+                    margin:0
+                  }}
+                >
+                  {dados.mensagem}
+                </p>
+              </div>
+
+              <div
+                className="card"
+                style={{
+                  padding:20,
+                  background:"#082b3a",
+                  borderColor:"#155e75"
+                }}
+              >
+                <p className="muted">
+                  Resposta / solução
+                </p>
+
+                {dados.resposta ? (
+                  <>
+                    <p
+                      style={{
+                        whiteSpace:"pre-wrap",
+                        margin:0,
+                        lineHeight:1.6
+                      }}
+                    >
+                      {dados.resposta}
+                    </p>
+
+                    {dados.respondido_em && (
+                      <p
+                        className="muted"
+                        style={{
+                          marginTop:15,
+                          fontSize:13
+                        }}
+                      >
+                        Respondido em{" "}
+                        {new Date(
+                          dados.respondido_em
+                        ).toLocaleString("pt-BR")}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="muted" style={{margin:0}}>
+                    A equipe ainda não registrou uma resposta para esta solicitação.
+                  </p>
+                )}
+              </div>
+
+              <div style={{marginTop:25}}>
+                <Link className="btn primary" to="/">
+                  ← Voltar ao início
+                </Link>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      </div>
+    </main>
+  );
+}
 function Login(){const [email,setEmail]=useState(""),[password,setPassword]=useState(""),[error,setError]=useState(""),[loading,setLoading]=useState(false);const nav=useNavigate();async function submit(e){e.preventDefault();setError("");if(!supabase){setError("Supabase não configurado. Verifique as variáveis da Vercel.");return}setLoading(true);const {error}=await supabase.auth.signInWithPassword({email,password});setLoading(false);if(error)setError(error.message);else nav("/dashboard")}return <main className="app center"><div className="container" style={{maxWidth:430}}><div className="card" style={{padding:30}}><h1>Acesso da equipe</h1><p className="muted">Área interna protegida.</p><form className="grid" onSubmit={submit} style={{marginTop:22}}><div><label className="label">E-mail</label><input className="input" type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></div><div><label className="label">Senha</label><input className="input" type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></div>{error&&<div style={{color:"#fca5a5"}}>{error}</div>}<button className="btn primary" disabled={loading}>{loading?"Entrando...":"Entrar"}</button></form><button className="btn ghost" style={{width:"100%",marginTop:15}} onClick={()=>nav("/")}>← Área pública</button></div></div></main>}
 
 function Protected(){const [loading,setLoading]=useState(true),[auth,setAuth]=useState(false);useEffect(()=>{if(!supabase){setLoading(false);return}supabase.auth.getSession().then(({data})=>{setAuth(!!data.session);setLoading(false)});const {data}=supabase.auth.onAuthStateChange((_e,s)=>setAuth(!!s));return()=>data.subscription.unsubscribe()},[]);if(loading)return <main className="app center">Verificando acesso...</main>;return auth?<Outlet/>:<Navigate to="/login" replace/>}
