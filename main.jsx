@@ -157,6 +157,8 @@ return <section>
   </div>
 </div>
 </section>
+}
+
 function Atendimentos(){
 const {rows,loading,error,updatedAt,reload}=useSolicitacoes();
 const [selected,setSelected]=useState(null),[saving,setSaving]=useState(false),[message,setMessage]=useState(""),[historico,setHistorico]=useState([]),[historyLoading,setHistoryLoading]=useState(false),[historyError,setHistoryError]=useState(""),[cancelTarget,setCancelTarget]=useState(null),[deleteTarget,setDeleteTarget]=useState(null),[deleteSheet,setDeleteSheet]=useState(false),[deleting,setDeleting]=useState(false);
