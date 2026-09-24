@@ -204,8 +204,131 @@ return <section><div style={{display:"flex",justifyContent:"space-between",align
 </section>
 }
 
-function Indicadores(){const {rows,loading,error,updatedAt,reload}=useSolicitacoes();const categorias=[...new Set(rows.map(r=>r.categoria).filter(Boolean))].sort();return <section><div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:16}}><div><h1>Indicadores</h1><p className="muted">Indicadores gerenciais calculados diretamente das solicitações.</p></div><div style={{textAlign:"right"}}><button className="btn ghost" onClick={reload}>{loading?"Atualizando...":"Atualizar"}</button>{updatedAt&&<div className="muted" style={{fontSize:12,marginTop:6}}>Atualizado às {updatedAt.toLocaleTimeString("pt-BR")}</div>}</div></div>{error&&<div style={{marginTop:16,color:"#fca5a5"}}>{error}</div>}<div className="grid grid4" style={{marginTop:25}}>{[["Total",rows.length],["Pendentes",rows.filter(r=>r.status!=="Resolvida"&&r.status!=="Cancelada").length],["Urgentes",rows.filter(r=>r.prioridade==="Urgente").length],["Resolvidas",rows.filter(r=>r.status==="Resolvida").length]].map(([x,n])=><div className="card" style={cardStyle} key={x}><span className="muted">{x}</span><div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":n}</div></div>)}</div><div className="grid grid2" style={{marginTop:25}}><div className="card" style={cardStyle}><h3>Distribuição por status</h3>{STATUS.map(s=><div key={s} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{s}</span><b>{rows.filter(r=>r.status===s).length}</b></div>)}</div><div className="card" style={cardStyle}><h3>Distribuição por categoria</h3>{categorias.length?categorias.map(c=><div key={c} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{c}</span><b>{rows.filter(r=>r.categoria===c).length}</b></div>):<p className="muted">As categorias aparecerão conforme novas solicitações forem registradas.</p>}</div></div><div className="card" style={{padding:20,marginTop:25}}><strong>Power BI / Copilot</strong><p className="muted">Esta área já possui os dados-base. A incorporação do relatório Power BI poderá ser feita sem substituir estes indicadores.</p></div></section>}
+function Indicadores(){
+const {rows,loading,error,updatedAt,reload}=useSolicitacoes();
 
+const [periodo,setPeriodo]=useState("30");
+const [canal,setCanal]=useState("Todos");
+const [categoria,setCategoria]=useState("Todas");
+const [responsavel,setResponsavel]=useState("Todos");
+
+const agora=new Date();
+const limite=periodo==="todos"?null:new Date(agora.getTime()-Number(periodo)*24*60*60*1000);
+
+const canais=["Todos",...new Set(rows.map(r=>r.canal).filter(Boolean))];
+const categorias=["Todas",...new Set(rows.map(r=>r.categoria).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+const responsaveis=["Todos",...new Set(rows.map(r=>r.responsavel).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+
+const filtradas=rows.filter(r=>{
+  const data=new Date(r.created_at);
+  const dentroPeriodo=!limite||data>=limite;
+  const dentroCanal=canal==="Todos"||r.canal===canal;
+  const dentroCategoria=categoria==="Todas"||r.categoria===categoria;
+  const dentroResponsavel=responsavel==="Todos"||r.responsavel===responsavel;
+  return dentroPeriodo&&dentroCanal&&dentroCategoria&&dentroResponsavel;
+});
+
+const total=filtradas.length;
+const pendentes=filtradas.filter(r=>r.status!=="Resolvida"&&r.status!=="Cancelada").length;
+const resolvidas=filtradas.filter(r=>r.status==="Resolvida").length;
+const canceladas=filtradas.filter(r=>r.status==="Cancelada").length;
+const urgentes=filtradas.filter(r=>r.prioridade==="Urgente").length;
+const altas=filtradas.filter(r=>r.prioridade==="Alta").length;
+const comResposta=filtradas.filter(r=>r.resposta&&r.resposta.trim()).length;
+
+const taxaResolucao=total?Math.round((resolvidas/total)*100):0;
+const taxaResposta=total?Math.round((comResposta/total)*100):0;
+const taxaPendencia=total?Math.round((pendentes/total)*100):0;
+
+const porStatus=STATUS.map(status=>[status,filtradas.filter(r=>r.status===status).length]);
+const porCanal=canais.slice(1).map(c=>[c,filtradas.filter(r=>r.canal===c).length]);
+const porCategoria=categorias.slice(1).map(c=>[c,filtradas.filter(r=>r.categoria===c).length]).sort((a,b)=>b[1]-a[1]);
+const porResponsavel=responsaveis.slice(1).map(r=>[r,filtradas.filter(x=>x.responsavel===r).length]).sort((a,b)=>b[1]-a[1]);
+const porPrioridade=PRIORIDADES.map(p=>[p,filtradas.filter(r=>r.prioridade===p).length]);
+
+const percentual=(n,d)=>d?Math.round(n/d*100):0;
+const barra=(valor,totalBarra)=> <div style={{height:9,background:"#162b3d",borderRadius:999,overflow:"hidden"}}><div style={{width:percentual(valor,totalBarra)+"%",height:"100%",background:"#22d3ee",borderRadius:999}}/></div>;
+
+return <section>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:16,flexWrap:"wrap"}}>
+  <div>
+    <h1>Indicadores</h1>
+    <p className="muted">Visão gerencial do desempenho do atendimento.</p>
+  </div>
+  <div style={{textAlign:"right"}}>
+    <button className="btn ghost" onClick={reload}>{loading?"Atualizando...":"Atualizar dados"}</button>
+    {updatedAt&&<div className="muted" style={{fontSize:12,marginTop:6}}>Atualizado às {updatedAt.toLocaleTimeString("pt-BR")}</div>}
+  </div>
+</div>
+
+{error&&<div style={{marginTop:16,color:"#fca5a5"}}>{error}</div>}
+
+<div className="card" style={{padding:20,marginTop:22}}>
+  <h2 style={{margin:"0 0 15px",fontSize:19}}>Filtros de análise</h2>
+  <div className="grid grid4">
+    <div><label className="label">Período</label><select className="input" value={periodo} onChange={e=>setPeriodo(e.target.value)}><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="365">Últimos 12 meses</option><option value="todos">Todo o período</option></select></div>
+    <div><label className="label">Canal</label><select className="input" value={canal} onChange={e=>setCanal(e.target.value)}>{canais.map(x=><option key={x}>{x}</option>)}</select></div>
+    <div><label className="label">Categoria</label><select className="input" value={categoria} onChange={e=>setCategoria(e.target.value)}>{categorias.map(x=><option key={x}>{x}</option>)}</select></div>
+    <div><label className="label">Responsável</label><select className="input" value={responsavel} onChange={e=>setResponsavel(e.target.value)}>{responsaveis.map(x=><option key={x}>{x}</option>)}</select></div>
+  </div>
+</div>
+
+<div className="grid grid4" style={{marginTop:22}}>
+  {[
+    ["Total",total,"Solicitações no recorte"],
+    ["Pendentes",pendentes,taxaPendencia+"% do total"],
+    ["Resolvidas",resolvidas,taxaResolucao+"% de resolução"],
+    ["Urgentes",urgentes,altas+" de alta prioridade"]
+  ].map(([label,value,desc])=><div className="card" style={cardStyle} key={label}><span className="muted">{label}</span><div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":value}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{desc}</div></div>)}
+</div>
+
+<div className="grid grid3" style={{marginTop:22}}>
+  <div className="card" style={cardStyle}><span className="muted">Taxa de resolução</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{taxaResolucao}%</div>{barra(resolvidas,total)}</div>
+  <div className="card" style={cardStyle}><span className="muted">Taxa com resposta</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{taxaResposta}%</div>{barra(comResposta,total)}</div>
+  <div className="card" style={cardStyle}><span className="muted">Cancelamentos</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{canceladas}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{percentual(canceladas,total)}% do total</div></div>
+</div>
+
+<div className="grid grid2" style={{marginTop:22}}>
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:19}}>Status</h2>
+    <div style={{display:"grid",gap:13,marginTop:18}}>{porStatus.map(([nome,n])=><div key={nome}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{nome}</span><strong>{n} <span className="muted">({percentual(n,total)}%)</span></strong></div>{barra(n,total)}</div>)}</div>
+  </div>
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:19}}>Canais</h2>
+    <div style={{display:"grid",gap:13,marginTop:18}}>{porCanal.length?porCanal.map(([nome,n])=><div key={nome}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{nome}</span><strong>{n}</strong></div>{barra(n,total)}</div>):<p className="muted">Nenhum canal no período.</p>}</div>
+  </div>
+</div>
+
+<div className="grid grid3" style={{marginTop:22}}>
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:19}}>Prioridades</h2>
+    <div style={{marginTop:12}}>{porPrioridade.map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>)}</div>
+  </div>
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:19}}>Categorias</h2>
+    <div style={{marginTop:12}}>{porCategoria.length?porCategoria.slice(0,8).map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>):<p className="muted">Nenhuma categoria no período.</p>}</div>
+  </div>
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:19}}>Responsáveis</h2>
+    <div style={{marginTop:12}}>{porResponsavel.length?porResponsavel.slice(0,8).map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>):<p className="muted">Nenhum responsável no período.</p>}</div>
+  </div>
+</div>
+
+<div className="card" style={{padding:20,marginTop:22}}>
+  <h2 style={{margin:0,fontSize:19}}>Leitura gerencial</h2>
+  <div className="grid grid3" style={{marginTop:15}}>
+    <div><span className="muted">Carga atual</span><p style={{margin:"7px 0 0"}}><strong>{pendentes}</strong> solicitações ainda pendentes.</p></div>
+    <div><span className="muted">Prioridade</span><p style={{margin:"7px 0 0"}}><strong>{urgentes+altas}</strong> solicitações em Alta ou Urgente.</p></div>
+    <div><span className="muted">Resposta</span><p style={{margin:"7px 0 0"}}><strong>{comResposta}</strong> solicitações possuem resposta registrada.</p></div>
+  </div>
+</div>
+
+<div className="card" style={{padding:20,marginTop:22,background:"#0b1e2d"}}>
+  <strong>Próxima integração: Power BI</strong>
+  <p className="muted" style={{margin:"7px 0 0"}}>Esta camada de indicadores fica como visão operacional dentro do Conecta Mais. O Power BI poderá receber os mesmos dados para análises mais avançadas, sem substituir esta tela.</p>
+</div>
+</section>
+}
 function Configuracoes(){const {rows}=useSolicitacoes();const [tab,setTab]=useState("usuarios");const [responsavel,setResponsavel]=useState(localStorage.getItem("conecta_responsavel")||"");const [auto,setAuto]=useState(localStorage.getItem("conecta_auto")!=="false");const [saved,setSaved]=useState("");const categorias=[...new Set(rows.map(r=>r.categoria).filter(Boolean))].sort();const save=()=>{localStorage.setItem("conecta_responsavel",responsavel);localStorage.setItem("conecta_auto",String(auto));setSaved("Configurações salvas neste navegador.");setTimeout(()=>setSaved(""),2500)};const tabs=[["usuarios","Usuários e equipes"],["categorias","Categorias"],["ia","Regras da IA"],["automacoes","Automações"]];return <section><h1>Configurações</h1><p className="muted">Configurações operacionais do Conecta Mais.</p><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:25}}>{tabs.map(([id,label])=><button key={id} className={tab===id?"btn primary":"btn ghost"} onClick={()=>setTab(id)}>{label}</button>)}</div><div className="card" style={{padding:25,marginTop:20}}>{tab==="usuarios"&&<><h2>Usuários e equipes</h2><p className="muted">Defina o responsável padrão para os atendimentos.</p><label className="label">Responsável padrão</label><input className="input" value={responsavel} onChange={e=>setResponsavel(e.target.value)} placeholder="Nome do responsável"/><button className="btn primary" style={{marginTop:15}} onClick={save}>Salvar configuração</button></>}{tab==="categorias"&&<><h2>Categorias utilizadas</h2><p className="muted">Lista formada automaticamente a partir das solicitações registradas.</p>{categorias.length?<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{categorias.map(c=><span key={c} className="card" style={{padding:"9px 14px"}}>{c}</span>)}</div>:<p className="muted">Nenhuma categoria cadastrada ainda.</p>}</>}{tab==="ia"&&<><h2>Regras da IA</h2><p className="muted">Preparação operacional para classificação e automação futura.</p><label style={{display:"flex",gap:10,alignItems:"center",marginTop:18}}><input type="checkbox" defaultChecked/> Sugerir categoria a partir da mensagem</label><label style={{display:"flex",gap:10,alignItems:"center",marginTop:14}}><input type="checkbox" defaultChecked/> Sugerir prioridade a partir da mensagem</label><p className="muted" style={{marginTop:20}}>As sugestões poderão ser conectadas a um agente de IA na próxima etapa.</p></>}{tab==="automacoes"&&<><h2>Automações</h2><p className="muted">Controles básicos para o fluxo operacional.</p><label style={{display:"flex",gap:10,alignItems:"center",marginTop:18}}><input type="checkbox" checked={auto} onChange={e=>setAuto(e.target.checked)}/> Ativar automações do atendimento</label><button className="btn primary" style={{marginTop:15}} onClick={save}>Salvar configuração</button></>}{saved&&<div style={{marginTop:15,color:"#86efac"}}>{saved}</div>}</div></section>}
 
 function App(){return <Routes><Route path="/" element={<Home/>}/><Route path="/solicitacao" element={<Solicitacao/>}/><Route path="/acompanhar" element={<Acompanhar/>}/><Route path="/protocolo/:id" element={<Protocolo/>}/><Route path="/login" element={<Login/>}/><Route element={<Protected/>}><Route element={<Internal/>}><Route path="/dashboard" element={<Dashboard/>}/><Route path="/atendimentos" element={<Atendimentos/>}/><Route path="/historico" element={<Historico/>}/><Route path="/indicadores" element={<Indicadores/>}/><Route path="/configuracoes" element={<Configuracoes/>}/></Route></Route><Route path="*" element={<Navigate to="/" replace/>}/></Routes>}
