@@ -206,7 +206,6 @@ return <section><div style={{display:"flex",justifyContent:"space-between",align
 
 function Indicadores(){
 const {rows,loading,error,updatedAt,reload}=useSolicitacoes();
-
 const [periodo,setPeriodo]=useState("30");
 const [canal,setCanal]=useState("Todos");
 const [categoria,setCategoria]=useState("Todas");
@@ -220,12 +219,8 @@ const categorias=["Todas",...new Set(rows.map(r=>r.categoria).filter(Boolean))].
 const responsaveis=["Todos",...new Set(rows.map(r=>r.responsavel).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
 
 const filtradas=rows.filter(r=>{
-  const data=new Date(r.created_at);
-  const dentroPeriodo=!limite||data>=limite;
-  const dentroCanal=canal==="Todos"||r.canal===canal;
-  const dentroCategoria=categoria==="Todas"||r.categoria===categoria;
-  const dentroResponsavel=responsavel==="Todos"||r.responsavel===responsavel;
-  return dentroPeriodo&&dentroCanal&&dentroCategoria&&dentroResponsavel;
+ const data=new Date(r.created_at);
+ return (!limite||data>=limite)&&(canal==="Todos"||r.canal===canal)&&(categoria==="Todas"||r.categoria===categoria)&&(responsavel==="Todos"||r.responsavel===responsavel);
 });
 
 const total=filtradas.length;
@@ -235,98 +230,93 @@ const canceladas=filtradas.filter(r=>r.status==="Cancelada").length;
 const urgentes=filtradas.filter(r=>r.prioridade==="Urgente").length;
 const altas=filtradas.filter(r=>r.prioridade==="Alta").length;
 const comResposta=filtradas.filter(r=>r.resposta&&r.resposta.trim()).length;
-
-const taxaResolucao=total?Math.round((resolvidas/total)*100):0;
-const taxaResposta=total?Math.round((comResposta/total)*100):0;
-const taxaPendencia=total?Math.round((pendentes/total)*100):0;
-
-const porStatus=STATUS.map(status=>[status,filtradas.filter(r=>r.status===status).length]);
-const porCanal=canais.slice(1).map(c=>[c,filtradas.filter(r=>r.canal===c).length]);
-const porCategoria=categorias.slice(1).map(c=>[c,filtradas.filter(r=>r.categoria===c).length]).sort((a,b)=>b[1]-a[1]);
-const porResponsavel=responsaveis.slice(1).map(r=>[r,filtradas.filter(x=>x.responsavel===r).length]).sort((a,b)=>b[1]-a[1]);
-const porPrioridade=PRIORIDADES.map(p=>[p,filtradas.filter(r=>r.prioridade===p).length]);
-
+const taxaResolucao=total?Math.round(resolvidas/total*100):0;
+const taxaResposta=total?Math.round(comResposta/total*100):0;
 const percentual=(n,d)=>d?Math.round(n/d*100):0;
 const barra=(valor,totalBarra)=> <div style={{height:9,background:"#162b3d",borderRadius:999,overflow:"hidden"}}><div style={{width:percentual(valor,totalBarra)+"%",height:"100%",background:"#22d3ee",borderRadius:999}}/></div>;
 
+const porStatus=STATUS.map(s=>[s,filtradas.filter(r=>r.status===s).length]);
+const porCanal=canais.slice(1).map(c=>[c,filtradas.filter(r=>r.canal===c).length]);
+const porCategoria=categorias.slice(1).map(c=>[c,filtradas.filter(r=>r.categoria===c).length]).sort((a,b)=>b[1]-a[1]);
+const porPrioridade=PRIORIDADES.map(p=>[p,filtradas.filter(r=>r.prioridade===p).length]);
+
+const dias=[];
+if(filtradas.length){
+ const fim=new Date();
+ const inicio=limite?new Date(limite):new Date(Math.min(...filtradas.map(r=>new Date(r.created_at).getTime())));
+ inicio.setHours(0,0,0,0); fim.setHours(0,0,0,0);
+ const cursor=new Date(inicio);
+ while(cursor<=fim&&dias.length<31){dias.push(new Date(cursor));cursor.setDate(cursor.getDate()+1);}
+ if(dias.length===31&&dias[dias.length-1]<fim){dias.shift();}
+}
+const tendencia=dias.map(d=>{
+ const chave=d.toLocaleDateString("pt-BR");
+ const entradas=filtradas.filter(r=>new Date(r.created_at).toLocaleDateString("pt-BR")===chave).length;
+ const fechadas=filtradas.filter(r=>{if(r.status!=="Resolvida"&&r.status!=="Cancelada")return false; const data=r.respondido_em?new Date(r.respondido_em):new Date(r.updated_at||r.created_at); return data.toLocaleDateString("pt-BR")===chave;}).length;
+ return {label:d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}),entradas,fechadas};
+});
+const maxTendencia=Math.max(1,...tendencia.map(x=>Math.max(x.entradas,x.fechadas)));
+
+const porResponsavel=responsaveis.slice(1).map(nome=>{
+ const base=filtradas.filter(r=>r.responsavel===nome);
+ const resol=base.filter(r=>r.status==="Resolvida").length;
+ const pend=base.filter(r=>r.status!=="Resolvida"&&r.status!=="Cancelada").length;
+ const canc=base.filter(r=>r.status==="Cancelada").length;
+ return {nome,total:base.length,resol,pend,canc,taxa:base.length?Math.round(resol/base.length*100):0};
+}).sort((a,b)=>b.total-a.total);
+
 return <section>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:16,flexWrap:"wrap"}}>
-  <div>
-    <h1>Indicadores</h1>
-    <p className="muted">Visão gerencial do desempenho do atendimento.</p>
-  </div>
-  <div style={{textAlign:"right"}}>
-    <button className="btn ghost" onClick={reload}>{loading?"Atualizando...":"Atualizar dados"}</button>
-    {updatedAt&&<div className="muted" style={{fontSize:12,marginTop:6}}>Atualizado às {updatedAt.toLocaleTimeString("pt-BR")}</div>}
-  </div>
-</div>
+ <div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:16,flexWrap:"wrap"}}>
+  <div><h1>Indicadores</h1><p className="muted">Visão gerencial, evolução das demandas e desempenho da equipe.</p></div>
+  <div style={{textAlign:"right"}}><button className="btn ghost" onClick={reload}>{loading?"Atualizando...":"Atualizar dados"}</button>{updatedAt&&<div className="muted" style={{fontSize:12,marginTop:6}}>Atualizado às {updatedAt.toLocaleTimeString("pt-BR")}</div>}</div>
+ </div>
+ {error&&<div style={{marginTop:16,color:"#fca5a5"}}>{error}</div>}
 
-{error&&<div style={{marginTop:16,color:"#fca5a5"}}>{error}</div>}
-
-<div className="card" style={{padding:20,marginTop:22}}>
+ <div className="card" style={{padding:20,marginTop:22}}>
   <h2 style={{margin:"0 0 15px",fontSize:19}}>Filtros de análise</h2>
   <div className="grid grid4">
-    <div><label className="label">Período</label><select className="input" value={periodo} onChange={e=>setPeriodo(e.target.value)}><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="365">Últimos 12 meses</option><option value="todos">Todo o período</option></select></div>
-    <div><label className="label">Canal</label><select className="input" value={canal} onChange={e=>setCanal(e.target.value)}>{canais.map(x=><option key={x}>{x}</option>)}</select></div>
-    <div><label className="label">Categoria</label><select className="input" value={categoria} onChange={e=>setCategoria(e.target.value)}>{categorias.map(x=><option key={x}>{x}</option>)}</select></div>
-    <div><label className="label">Responsável</label><select className="input" value={responsavel} onChange={e=>setResponsavel(e.target.value)}>{responsaveis.map(x=><option key={x}>{x}</option>)}</select></div>
+   <div><label className="label">Período</label><select className="input" value={periodo} onChange={e=>setPeriodo(e.target.value)}><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="365">Últimos 12 meses</option><option value="todos">Todo o período</option></select></div>
+   <div><label className="label">Canal</label><select className="input" value={canal} onChange={e=>setCanal(e.target.value)}>{canais.map(x=><option key={x}>{x}</option>)}</select></div>
+   <div><label className="label">Categoria</label><select className="input" value={categoria} onChange={e=>setCategoria(e.target.value)}>{categorias.map(x=><option key={x}>{x}</option>)}</select></div>
+   <div><label className="label">Responsável</label><select className="input" value={responsavel} onChange={e=>setResponsavel(e.target.value)}>{responsaveis.map(x=><option key={x}>{x}</option>)}</select></div>
   </div>
-</div>
+ </div>
 
-<div className="grid grid4" style={{marginTop:22}}>
-  {[
-    ["Total",total,"Solicitações no recorte"],
-    ["Pendentes",pendentes,taxaPendencia+"% do total"],
-    ["Resolvidas",resolvidas,taxaResolucao+"% de resolução"],
-    ["Urgentes",urgentes,altas+" de alta prioridade"]
-  ].map(([label,value,desc])=><div className="card" style={cardStyle} key={label}><span className="muted">{label}</span><div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":value}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{desc}</div></div>)}
-</div>
+ <div className="grid grid4" style={{marginTop:22}}>
+  {[["Total",total,"Solicitações no recorte"],["Pendentes",pendentes,percentual(pendentes,total)+"% do total"],["Resolvidas",resolvidas,taxaResolucao+"% do total"],["Urgentes",urgentes,(urgentes+altas)+" em Alta ou Urgente"]].map(([label,value,desc])=><div className="card" style={cardStyle} key={label}><span className="muted">{label}</span><div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":value}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{desc}</div></div>)}
+ </div>
 
-<div className="grid grid3" style={{marginTop:22}}>
+ <div className="grid grid3" style={{marginTop:22}}>
   <div className="card" style={cardStyle}><span className="muted">Taxa de resolução</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{taxaResolucao}%</div>{barra(resolvidas,total)}</div>
   <div className="card" style={cardStyle}><span className="muted">Taxa com resposta</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{taxaResposta}%</div>{barra(comResposta,total)}</div>
   <div className="card" style={cardStyle}><span className="muted">Cancelamentos</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{canceladas}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{percentual(canceladas,total)}% do total</div></div>
-</div>
+ </div>
 
-<div className="grid grid2" style={{marginTop:22}}>
-  <div className="card" style={cardStyle}>
-    <h2 style={{margin:0,fontSize:19}}>Status</h2>
-    <div style={{display:"grid",gap:13,marginTop:18}}>{porStatus.map(([nome,n])=><div key={nome}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{nome}</span><strong>{n} <span className="muted">({percentual(n,total)}%)</span></strong></div>{barra(n,total)}</div>)}</div>
-  </div>
-  <div className="card" style={cardStyle}>
-    <h2 style={{margin:0,fontSize:19}}>Canais</h2>
-    <div style={{display:"grid",gap:13,marginTop:18}}>{porCanal.length?porCanal.map(([nome,n])=><div key={nome}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{nome}</span><strong>{n}</strong></div>{barra(n,total)}</div>):<p className="muted">Nenhum canal no período.</p>}</div>
-  </div>
-</div>
+ <div className="card" style={{padding:20,marginTop:22}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}><div><h2 style={{margin:0,fontSize:19}}>Evolução das solicitações</h2><p className="muted" style={{margin:"5px 0 0"}}>Entradas x demandas encerradas no período selecionado.</p></div><div style={{display:"flex",gap:16,fontSize:12}}><span>● Entradas</span><span>● Encerradas</span></div></div>
+  {tendencia.length?<div style={{display:"flex",alignItems:"end",gap:5,height:190,marginTop:24,overflowX:"auto",paddingBottom:22}}>{tendencia.map((d,i)=><div key={i} style={{minWidth:tendencia.length>20?18:28,height:"100%",display:"flex",alignItems:"end",gap:2,position:"relative"}}><div title={"Entradas: "+d.entradas} style={{height:(d.entradas/maxTendencia*150)+"px",flex:1,background:"#22d3ee",borderRadius:"4px 4px 0 0",minHeight:d.entradas?3:0}}/><div title={"Encerradas: "+d.fechadas} style={{height:(d.fechadas/maxTendencia*150)+"px",flex:1,background:"#64748b",borderRadius:"4px 4px 0 0",minHeight:d.fechadas?3:0}}/><span style={{position:"absolute",bottom:-20,fontSize:9,left:"50%",transform:"translateX(-50%)"}}>{d.label}</span></div>)}</div>:<p className="muted" style={{marginTop:18}}>Não há dados suficientes para montar a evolução.</p>}
+ </div>
 
-<div className="grid grid3" style={{marginTop:22}}>
-  <div className="card" style={cardStyle}>
-    <h2 style={{margin:0,fontSize:19}}>Prioridades</h2>
-    <div style={{marginTop:12}}>{porPrioridade.map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>)}</div>
+ <div className="grid grid2" style={{marginTop:22}}>
+  <div className="card" style={cardStyle}><h2 style={{margin:0,fontSize:19}}>Desempenho por responsável</h2><p className="muted" style={{margin:"5px 0 15px"}}>Volume, encerramentos e pendências no recorte.</p>
+   {porResponsavel.length?<div style={{overflowX:"auto"}}><table className="table"><thead><tr><th>Responsável</th><th>Total</th><th>Resolvidas</th><th>Pendentes</th><th>Canceladas</th><th>Taxa</th></tr></thead><tbody>{porResponsavel.map(x=><tr key={x.nome}><td><strong>{x.nome}</strong></td><td>{x.total}</td><td>{x.resol}</td><td>{x.pend}</td><td>{x.canc}</td><td><strong>{x.taxa}%</strong></td></tr>)}</tbody></table></div>:<p className="muted">Nenhum responsável no período.</p>}
   </div>
-  <div className="card" style={cardStyle}>
-    <h2 style={{margin:0,fontSize:19}}>Categorias</h2>
-    <div style={{marginTop:12}}>{porCategoria.length?porCategoria.slice(0,8).map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>):<p className="muted">Nenhuma categoria no período.</p>}</div>
+  <div className="card" style={cardStyle}><h2 style={{margin:0,fontSize:19}}>Carga por categoria</h2><p className="muted" style={{margin:"5px 0 15px"}}>Categorias com maior volume de solicitações.</p>
+   {porCategoria.length?porCategoria.slice(0,8).map(([nome,n])=><div key={nome} style={{marginBottom:13}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}><span>{nome}</span><strong>{n}</strong></div>{barra(n,total)}</div>):<p className="muted">Nenhuma categoria no período.</p>}
   </div>
-  <div className="card" style={cardStyle}>
-    <h2 style={{margin:0,fontSize:19}}>Responsáveis</h2>
-    <div style={{marginTop:12}}>{porResponsavel.length?porResponsavel.slice(0,8).map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>):<p className="muted">Nenhum responsável no período.</p>}</div>
-  </div>
-</div>
+ </div>
 
-<div className="card" style={{padding:20,marginTop:22}}>
-  <h2 style={{margin:0,fontSize:19}}>Leitura gerencial</h2>
-  <div className="grid grid3" style={{marginTop:15}}>
-    <div><span className="muted">Carga atual</span><p style={{margin:"7px 0 0"}}><strong>{pendentes}</strong> solicitações ainda pendentes.</p></div>
-    <div><span className="muted">Prioridade</span><p style={{margin:"7px 0 0"}}><strong>{urgentes+altas}</strong> solicitações em Alta ou Urgente.</p></div>
-    <div><span className="muted">Resposta</span><p style={{margin:"7px 0 0"}}><strong>{comResposta}</strong> solicitações possuem resposta registrada.</p></div>
-  </div>
-</div>
+ <div className="grid grid2" style={{marginTop:22}}>
+  <div className="card" style={cardStyle}><h2 style={{margin:0,fontSize:19}}>Status</h2><div style={{display:"grid",gap:13,marginTop:18}}>{porStatus.map(([nome,n])=><div key={nome}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{nome}</span><strong>{n} <span className="muted">({percentual(n,total)}%)</span></strong></div>{barra(n,total)}</div>)}</div></div>
+  <div className="card" style={cardStyle}><h2 style={{margin:0,fontSize:19}}>Canais</h2><div style={{display:"grid",gap:13,marginTop:18}}>{porCanal.length?porCanal.map(([nome,n])=><div key={nome}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{nome}</span><strong>{n}</strong></div>{barra(n,total)}</div>):<p className="muted">Nenhum canal no período.</p>}</div></div>
+ </div>
 
-<div className="card" style={{padding:20,marginTop:22,background:"#0b1e2d"}}>
-  <strong>Próxima integração: Power BI</strong>
-  <p className="muted" style={{margin:"7px 0 0"}}>Esta camada de indicadores fica como visão operacional dentro do Conecta Mais. O Power BI poderá receber os mesmos dados para análises mais avançadas, sem substituir esta tela.</p>
-</div>
+ <div className="grid grid2" style={{marginTop:22}}>
+  <div className="card" style={cardStyle}><h2 style={{margin:0,fontSize:19}}>Prioridades</h2>{porPrioridade.map(([nome,n])=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{n}</strong></div>)}</div>
+  <div className="card" style={{padding:20,background:"#0b1e2d"}}><strong>Leitura gerencial</strong><p className="muted" style={{margin:"8px 0 0"}}>{pendentes} pendentes, {urgentes+altas} em Alta/Urgente e {comResposta} com resposta registrada. Use os filtros acima para transformar esses números em recortes por período, canal, categoria ou responsável.</p></div>
+ </div>
+
+ <div className="card" style={{padding:20,marginTop:22,background:"#0b1e2d"}}><strong>Base para Power BI</strong><p className="muted" style={{margin:"7px 0 0"}}>Os indicadores desta tela usam a mesma base de solicitações não excluídas. O Power BI poderá aprofundar tendências, metas e cruzamentos sem substituir a visão operacional do sistema.</p></div>
 </section>
 }
 function Configuracoes(){const {rows}=useSolicitacoes();const [tab,setTab]=useState("usuarios");const [responsavel,setResponsavel]=useState(localStorage.getItem("conecta_responsavel")||"");const [auto,setAuto]=useState(localStorage.getItem("conecta_auto")!=="false");const [saved,setSaved]=useState("");const categorias=[...new Set(rows.map(r=>r.categoria).filter(Boolean))].sort();const save=()=>{localStorage.setItem("conecta_responsavel",responsavel);localStorage.setItem("conecta_auto",String(auto));setSaved("Configurações salvas neste navegador.");setTimeout(()=>setSaved(""),2500)};const tabs=[["usuarios","Usuários e equipes"],["categorias","Categorias"],["ia","Regras da IA"],["automacoes","Automações"]];return <section><h1>Configurações</h1><p className="muted">Configurações operacionais do Conecta Mais.</p><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:25}}>{tabs.map(([id,label])=><button key={id} className={tab===id?"btn primary":"btn ghost"} onClick={()=>setTab(id)}>{label}</button>)}</div><div className="card" style={{padding:25,marginTop:20}}>{tab==="usuarios"&&<><h2>Usuários e equipes</h2><p className="muted">Defina o responsável padrão para os atendimentos.</p><label className="label">Responsável padrão</label><input className="input" value={responsavel} onChange={e=>setResponsavel(e.target.value)} placeholder="Nome do responsável"/><button className="btn primary" style={{marginTop:15}} onClick={save}>Salvar configuração</button></>}{tab==="categorias"&&<><h2>Categorias utilizadas</h2><p className="muted">Lista formada automaticamente a partir das solicitações registradas.</p>{categorias.length?<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>{categorias.map(c=><span key={c} className="card" style={{padding:"9px 14px"}}>{c}</span>)}</div>:<p className="muted">Nenhuma categoria cadastrada ainda.</p>}</>}{tab==="ia"&&<><h2>Regras da IA</h2><p className="muted">Preparação operacional para classificação e automação futura.</p><label style={{display:"flex",gap:10,alignItems:"center",marginTop:18}}><input type="checkbox" defaultChecked/> Sugerir categoria a partir da mensagem</label><label style={{display:"flex",gap:10,alignItems:"center",marginTop:14}}><input type="checkbox" defaultChecked/> Sugerir prioridade a partir da mensagem</label><p className="muted" style={{marginTop:20}}>As sugestões poderão ser conectadas a um agente de IA na próxima etapa.</p></>}{tab==="automacoes"&&<><h2>Automações</h2><p className="muted">Controles básicos para o fluxo operacional.</p><label style={{display:"flex",gap:10,alignItems:"center",marginTop:18}}><input type="checkbox" checked={auto} onChange={e=>setAuto(e.target.checked)}/> Ativar automações do atendimento</label><button className="btn primary" style={{marginTop:15}} onClick={save}>Salvar configuração</button></>}{saved&&<div style={{marginTop:15,color:"#86efac"}}>{saved}</div>}</div></section>}
