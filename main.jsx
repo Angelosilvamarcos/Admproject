@@ -239,6 +239,18 @@ const porStatus=STATUS.map(s=>[s,filtradas.filter(r=>r.status===s).length]);
 const porCanal=canais.slice(1).map(c=>[c,filtradas.filter(r=>r.canal===c).length]);
 const porCategoria=categorias.slice(1).map(c=>[c,filtradas.filter(r=>r.categoria===c).length]).sort((a,b)=>b[1]-a[1]);
 const porPrioridade=PRIORIDADES.map(p=>[p,filtradas.filter(r=>r.prioridade===p).length]);
+const temposResposta=filtradas.map(r=>{if(!r.created_at||!r.respondido_em)return null;const ms=new Date(r.respondido_em)-new Date(r.created_at);return ms>=0?ms:null;}).filter(Boolean);
+const tempoMedioResposta=temposResposta.length?temposResposta.reduce((a,b)=>a+b,0)/temposResposta.length:null;
+const formatarDuracao=ms=>{if(ms===null)return "—";const h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000);return h?(h+"h "+m+"min"):(m+"min");};
+const periodoAnterior=periodo==="todos"?null:(()=>{const fim=new Date(limite);const inicio=new Date(fim.getTime()-Number(periodo)*24*60*60*1000);return {inicio,fim};})();
+const anterior=periodoAnterior?rows.filter(r=>{const d=new Date(r.created_at);return d>=periodoAnterior.inicio&&d<periodoAnterior.fim&&(canal==="Todos"||r.canal===canal)&&(categoria==="Todas"||r.categoria===categoria)&&(responsavel==="Todos"||r.responsavel===responsavel);}):[];
+const variacao=anterior.length?Math.round((total-anterior.length)/anterior.length*100):null;
+const variacaoTexto=variacao===null?"Sem base":(variacao>0?"+":"")+variacao+"%";
+const alertas=[];
+if(urgentes>0)alertas.push({titulo:"Prioridades urgentes",texto:urgentes+" solicitação(ões) com prioridade Urgente no recorte."});
+if(pendentes>total*0.5&&total>0)alertas.push({titulo:"Pendências elevadas",texto:"Mais da metade das solicitações do recorte ainda está pendente."});
+if(variacao!==null&&variacao>=20)alertas.push({titulo:"Aumento de demanda",texto:"O volume está "+variacao+"% acima do período anterior equivalente."});
+if(variacao!==null&&variacao<=-20)alertas.push({titulo:"Redução de demanda",texto:"O volume está "+Math.abs(variacao)+"% abaixo do período anterior equivalente."});
 
 const dias=[];
 if(filtradas.length){
@@ -286,7 +298,18 @@ return <section>
   {[["Total",total,"Solicitações no recorte"],["Pendentes",pendentes,percentual(pendentes,total)+"% do total"],["Resolvidas",resolvidas,taxaResolucao+"% do total"],["Urgentes",urgentes,(urgentes+altas)+" em Alta ou Urgente"]].map(([label,value,desc])=><div className="card" style={cardStyle} key={label}><span className="muted">{label}</span><div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":value}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{desc}</div></div>)}
  </div>
 
- <div className="grid grid3" style={{marginTop:22}}>
+ <div className="grid grid4" style={{marginTop:22}}>
+ <div className="card" style={cardStyle}><span className="muted">Tempo médio até resposta</span><div style={{fontSize:30,fontWeight:900,marginTop:8}}>{formatarDuracao(tempoMedioResposta)}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{temposResposta.length} registro(s) com resposta e data válida</div></div>
+ <div className="card" style={cardStyle}><span className="muted">Variação do volume</span><div style={{fontSize:30,fontWeight:900,marginTop:8}}>{variacaoTexto}</div><div className="muted" style={{fontSize:12,marginTop:7}}>comparação com o período anterior</div></div>
+ <div className="card" style={cardStyle}><span className="muted">Alta + Urgente</span><div style={{fontSize:30,fontWeight:900,marginTop:8}}>{altas+urgentes}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{percentual(altas+urgentes,total)}% do recorte</div></div>
+ <div className="card" style={cardStyle}><span className="muted">Com resposta</span><div style={{fontSize:30,fontWeight:900,marginTop:8}}>{comResposta}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{taxaResposta}% do recorte</div></div>
+</div>
+<div className="card" style={{padding:20,marginTop:22}}>
+ <h2 style={{margin:0,fontSize:19}}>Alertas gerenciais</h2><p className="muted" style={{margin:"5px 0 0"}}>Sinais automáticos baseados nos dados filtrados.</p>
+ {alertas.length?<div className="grid grid3" style={{marginTop:15}}>{alertas.map((a,i)=><div key={i} style={{padding:15,border:"1px solid #28445a",borderRadius:12,background:"#0b1e2d"}}><strong>{a.titulo}</strong><p className="muted" style={{margin:"7px 0 0",fontSize:13}}>{a.texto}</p></div>)}</div>:<p className="muted" style={{marginTop:15}}>Nenhum alerta relevante identificado no recorte atual.</p>}
+</div>
+
+<div className="grid grid3" style={{marginTop:22}}>
   <div className="card" style={cardStyle}><span className="muted">Taxa de resolução</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{taxaResolucao}%</div>{barra(resolvidas,total)}</div>
   <div className="card" style={cardStyle}><span className="muted">Taxa com resposta</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{taxaResposta}%</div>{barra(comResposta,total)}</div>
   <div className="card" style={cardStyle}><span className="muted">Cancelamentos</span><div style={{fontSize:32,fontWeight:900,marginTop:8}}>{canceladas}</div><div className="muted" style={{fontSize:12,marginTop:7}}>{percentual(canceladas,total)}% do total</div></div>
