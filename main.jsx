@@ -24,8 +24,139 @@ function Internal(){const nav=useNavigate();async function sair(){if(supabase)aw
 
 function useSolicitacoes(){const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(""),[updatedAt,setUpdatedAt]=useState(null);const load=async()=>{if(!supabase){setError("Supabase não configurado.");setLoading(false);return}setLoading(true);const {data,error}=await supabase.from("solicitacoes").select("*").eq("excluida",false).order("created_at",{ascending:false});if(error)setError(error.message);else{setRows(data||[]);setUpdatedAt(new Date())}setLoading(false)};useEffect(()=>{load()},[]);return {rows,loading,error,updatedAt,reload:load}};
 
-function Dashboard(){const {rows,loading,error,updatedAt,reload}=useSolicitacoes();const cards=[["Solicitações",rows.length],["Abertas",rows.filter(x=>x.status==="Aberta").length],["Em andamento",rows.filter(x=>x.status==="Em andamento").length],["Resolvidas",rows.filter(x=>x.status==="Resolvida").length]];return <section><div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:16}}><div><h1>Dashboard</h1><p className="muted">Visão geral dos atendimentos em tempo real.</p></div><div style={{textAlign:"right"}}><button className="btn ghost" onClick={reload}>{loading?"Atualizando...":"Atualizar"}</button>{updatedAt&&<div className="muted" style={{fontSize:12,marginTop:6}}>Atualizado às {updatedAt.toLocaleTimeString("pt-BR")}</div>}</div></div>{error&&<div style={{marginTop:16,color:"#fca5a5"}}>{error}</div>}<div className="grid grid4" style={{marginTop:25}}>{cards.map(([x,n])=><div className="card" style={cardStyle} key={x}><span className="muted">{x}</span><div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":n}</div></div>)}</div><div className="grid grid2" style={{marginTop:25}}><div className="card" style={cardStyle}><strong>Por canal</strong>{["Site","WhatsApp","E-mail","Telefone"].map(c=><div key={c} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{c}</span><b>{rows.filter(r=>r.canal===c).length}</b></div>)}</div><div className="card" style={cardStyle}><strong>Por prioridade</strong>{PRIORIDADES.map(p=><div key={p} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{p}</span><b>{rows.filter(r=>r.prioridade===p).length}</b></div>)}</div></div></section>}
+function Dashboard(){
+const {rows,loading,error,updatedAt,reload}=useSolicitacoes();
 
+const pendentes=rows.filter(r=>r.status!=="Resolvida"&&r.status!=="Cancelada");
+const abertos=rows.filter(r=>r.status==="Aberta");
+const andamento=rows.filter(r=>r.status==="Em andamento");
+const resolvidas=rows.filter(r=>r.status==="Resolvida");
+const canceladas=rows.filter(r=>r.status==="Cancelada");
+const urgentes=rows.filter(r=>r.prioridade==="Urgente");
+
+const canais=["Site","WhatsApp","E-mail","Telefone"];
+const statusDashboard=["Aberta","Em andamento","Aguardando cliente","Aguardando setor","Resolvida","Cancelada"];
+const categorias=[...new Set(rows.map(r=>r.categoria).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+const responsaveis=[...new Set(rows.map(r=>r.responsavel).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+const recentes=rows.slice(0,6);
+
+const percentual=(valor,total)=>total?Math.round((valor/total)*100):0;
+const maior=(lista)=>Math.max(1,...lista.map(x=>x[1]));
+
+const metricas=[
+  ["Solicitações",rows.length,"Todas as solicitações ativas no sistema"],
+  ["Pendentes",pendentes.length,"Ainda precisam de atendimento"],
+  ["Em andamento",andamento.length,"Atendimentos em execução"],
+  ["Urgentes",urgentes.length,"Prioridade que exige atenção"],
+  ["Resolvidas",resolvidas.length,"Atendimentos concluídos"],
+  ["Canceladas",canceladas.length,"Atendimentos cancelados"]
+];
+
+return <section>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"end",gap:16,flexWrap:"wrap"}}>
+  <div>
+    <h1>Dashboard</h1>
+    <p className="muted">Visão operacional do Conecta Mais 4.1.</p>
+  </div>
+  <div style={{display:"flex",alignItems:"center",gap:10}}>
+    <Link className="btn primary" to="/atendimentos">Abrir fila de atendimento</Link>
+    <button className="btn ghost" onClick={reload}>{loading?"Atualizando...":"Atualizar"}</button>
+  </div>
+</div>
+
+{updatedAt&&<div className="muted" style={{fontSize:12,marginTop:8}}>Última atualização: {updatedAt.toLocaleString("pt-BR")}</div>}
+{error&&<div style={{marginTop:16,color:"#fca5a5"}}>{error}</div>}
+
+<div className="grid grid3" style={{marginTop:25}}>
+  {metricas.map(([label,value,description])=><div className="card" style={cardStyle} key={label}>
+    <span className="muted">{label}</span>
+    <div style={{fontSize:34,fontWeight:900,marginTop:8}}>{loading?"…":value}</div>
+    <div className="muted" style={{fontSize:12,marginTop:7}}>{description}</div>
+  </div>)}
+</div>
+
+<div className="grid grid2" style={{marginTop:25}}>
+  <div className="card" style={cardStyle}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+      <div><h2 style={{margin:0,fontSize:20}}>Status das solicitações</h2><p className="muted" style={{margin:"5px 0 0"}}>Distribuição atual</p></div>
+      <span className="muted">{rows.length} total</span>
+    </div>
+    <div style={{marginTop:18,display:"grid",gap:13}}>
+      {statusDashboard.map(status=>{
+        const total=rows.filter(r=>r.status===status).length;
+        const pct=percentual(total,rows.length);
+        return <div key={status}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{status}</span><strong>{total} <span className="muted">({pct}%)</span></strong></div>
+          <div style={{height:8,background:"#162b3d",borderRadius:999,overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:"#22d3ee",borderRadius:999}}/></div>
+        </div>
+      })}
+    </div>
+  </div>
+
+  <div className="card" style={cardStyle}>
+    <div><h2 style={{margin:0,fontSize:20}}>Por canal</h2><p className="muted" style={{margin:"5px 0 0"}}>Origem das solicitações</p></div>
+    <div style={{marginTop:18,display:"grid",gap:13}}>
+      {canais.map(canal=>{
+        const total=rows.filter(r=>r.canal===canal).length;
+        const pct=percentual(total,rows.length);
+        return <div key={canal}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span>{canal}</span><strong>{total}</strong></div>
+          <div style={{height:8,background:"#162b3d",borderRadius:999,overflow:"hidden"}}><div style={{width:pct+"%",height:"100%",background:"#38bdf8",borderRadius:999}}/></div>
+        </div>
+      })}
+    </div>
+  </div>
+</div>
+
+<div className="grid grid3" style={{marginTop:25}}>
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:20}}>Prioridades</h2>
+    <div style={{marginTop:15}}>
+      {PRIORIDADES.map(p=><div key={p} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{p}</span><strong>{rows.filter(r=>r.prioridade===p).length}</strong></div>)}
+    </div>
+  </div>
+
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:20}}>Categorias</h2>
+    <div style={{marginTop:15}}>
+      {categorias.length?categorias.slice(0,6).map(c=><div key={c} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{c}</span><strong>{rows.filter(r=>r.categoria===c).length}</strong></div>):<p className="muted">Nenhuma categoria registrada.</p>}
+    </div>
+  </div>
+
+  <div className="card" style={cardStyle}>
+    <h2 style={{margin:0,fontSize:20}}>Responsáveis</h2>
+    <div style={{marginTop:15}}>
+      {responsaveis.length?responsaveis.slice(0,6).map(nome=><div key={nome} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #1f3548"}}><span>{nome}</span><strong>{rows.filter(r=>r.responsavel===nome).length}</strong></div>):<p className="muted">Nenhum responsável atribuído.</p>}
+    </div>
+  </div>
+</div>
+
+<div className="card" style={{padding:20,marginTop:25}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:15,flexWrap:"wrap"}}>
+    <div><h2 style={{margin:0,fontSize:20}}>Últimas solicitações</h2><p className="muted" style={{margin:"5px 0 0"}}>Entradas mais recentes no sistema</p></div>
+    <Link className="btn ghost" to="/atendimentos">Ver todas</Link>
+  </div>
+  {loading?<p className="muted" style={{marginTop:18}}>Carregando solicitações...</p>:recentes.length===0?<p className="muted" style={{marginTop:18}}>Nenhuma solicitação registrada.</p>:<div style={{overflowX:"auto",marginTop:15}}>
+    <table style={{width:"100%",borderCollapse:"collapse"}}>
+      <thead><tr>{["Protocolo","Cliente","Assunto","Status","Prioridade","Responsável"].map(h=><th key={h} style={{textAlign:"left",padding:11,borderBottom:"1px solid #29445a",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+      <tbody>{recentes.map(r=><tr key={r.id}>
+        {[r.protocolo,r.nome_cliente,r.assunto,r.status,r.prioridade,r.responsavel||"—"].map((v,i)=><td key={i} style={{padding:11,borderBottom:"1px solid #1f3548",whiteSpace:i===2?"normal":"nowrap"}}>{v}</td>)}
+      </tr>)}</tbody>
+    </table>
+  </div>}
+</div>
+
+<div className="card" style={{padding:20,marginTop:25}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:15,flexWrap:"wrap"}}>
+    <div><h2 style={{margin:0,fontSize:20}}>Ações rápidas</h2><p className="muted" style={{margin:"5px 0 0"}}>Acesse os pontos principais da operação.</p></div>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+      <Link className="btn ghost" to="/atendimentos">Atendimentos</Link>
+      <Link className="btn ghost" to="/historico">Histórico</Link>
+      <Link className="btn ghost" to="/indicadores">Indicadores</Link>
+    </div>
+  </div>
+</div>
+</section>
 function Atendimentos(){
 const {rows,loading,error,updatedAt,reload}=useSolicitacoes();
 const [selected,setSelected]=useState(null),[saving,setSaving]=useState(false),[message,setMessage]=useState(""),[historico,setHistorico]=useState([]),[historyLoading,setHistoryLoading]=useState(false),[historyError,setHistoryError]=useState(""),[cancelTarget,setCancelTarget]=useState(null),[deleteTarget,setDeleteTarget]=useState(null),[deleteSheet,setDeleteSheet]=useState(false),[deleting,setDeleting]=useState(false);
